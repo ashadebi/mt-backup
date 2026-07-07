@@ -107,7 +107,16 @@ done
 print_credentials() {
   local url_scheme="http"
   local url_port="8000"
-  [[ $WITH_HTTPS -eq 1 ]] && { url_scheme="https"; url_port=""; }
+  if [[ $WITH_HTTPS -eq 1 ]]; then
+    url_scheme="https"
+    url_port=""
+  fi
+  local url_display
+  if [[ -n "$url_port" ]]; then
+    url_display="${url_scheme}://${PANEL_DOMAIN}:${url_port}/"
+  else
+    url_display="${url_scheme}://${PANEL_DOMAIN}/"
+  fi
 
   hdr "════════════════════════════════════════════════════════════"
 
@@ -115,7 +124,7 @@ print_credentials() {
 
 ${BOLD}${GRN}  mt-backup is installed and running!${NC}
 
-${BOLD}  ${CYN}Panel URL${NC}       ${BOLD}${url_scheme}://${PANEL_DOMAIN}${url_port:+/}${url_port}/${NC}
+${BOLD}  ${CYN}Panel URL${NC}       ${BOLD}${url_display}${NC}
 ${BOLD}  ${CYN}Server IP${NC}       ${SERVER_IP}
 
 ${BOLD}${YLW}  ┌─────────────────────────────────────────────────────┐${NC}
