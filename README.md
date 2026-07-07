@@ -1,337 +1,277 @@
 # MikroTik Backup Panel
 
-> Auto-backup & version control panel untuk router MikroTik via SSH.  
-> Backup config harian/mingguan/bulanan, **lihat & compare** langsung di browser, multi-user (admin/viewer), deploy pakai Docker.
+> Auto-backup router MikroTik ke VPS, lihat & compare config di browser.
 
-![Dashboard](docs/02-dashboard.png)
-
----
-
-## ✨ Fitur
-
-- 🚀 **Auto-backup** via SSH — fetch `/export` setiap **08:00 & 18:00 WIB** (cron)
-- 📁 **Smart naming** — `{Identity}.{YYYY-MM-DD}.{daily/weekly/monthly}.rsc`
-- 🪄 **Auto-detect** — nama, lokasi, model, device type langsung dari router pas input (cuma butuh **IP + username + password**)
-- 👁 **In-browser viewer** — lihat isi `.rsc` lengkap dengan syntax highlight & line numbers, gak perlu download dulu
-- 🔄 **Diff antar backup** — unified diff antar 2 file backup (atau vs prev otomatis), cocok buat audit perubahan config
-- 👥 **Multi-user** — admin (full access) + viewer (read-only: lihat/download/diff)
-- 🔐 **Path-traversal safe** — semua endpoint file pakai `Path.resolve()` guard
-- 💬 **Modal konfirmasi** untuk semua aksi delete (gak ada native browser confirm yg jelek)
-- 🎨 **Modern UI** — sidebar dark, top bar, dashboard cards, responsive
+Auto-backup harian (08:00 + 18:00 WIB), lihat diff perubahan config, multi-user.
 
 ---
 
-## 📸 Screenshots
+## 🚀 Quick Install (1 menit)
 
-### 🔐 Login
+Punya VPS Debian/Ubuntu + akses root + domain yg sudah pointing ke VPS:
+
+```bash
+# Standalone (port 8000, HTTP — cocok untuk testing)
+curl -fsSL https://raw.githubusercontent.com/ashadebi/mt-backup/main/scripts/install.sh \
+  | sudo bash -s -- --domain backup.example.com --email admin@example.com
+
+# Production (HTTPS via Traefik + Let's Encrypt — DNS A record harus sudah di-set)
+curl -fsSL https://raw.githubusercontent.com/ashadebi/mt-backup/main/scripts/install.sh \
+  | sudo bash -s -- --domain backup.example.com --email admin@example.com --with-https
+```
+
+**Output akhir** akan menampilkan:
+- URL panel
+- Username admin
+- **Password admin random** (ditampilkan sekali di terminal, tidak disimpan)
+
+⚠️ **Catat password-nya sekarang** — kalau hilang, re-run `install.sh --reset-admin`.
+
+---
+
+## ✨ Fitur Singkat
+
+| Fitur | Penjelasan |
+|---|---|
+| Auto-backup | Cron jalan 2× sehari (08:00 + 18:00 WIB) |
+| Auto-detect | Nama, model, lokasi, device type auto-detect pas tambah router |
+| In-browser viewer | Lihat isi `.rsc` tanpa download |
+| Diff config | Bandingkan 2 backup, lihat baris yg berubah |
+| Multi-user | Admin (full) + viewer (lihat/download/diff saja) |
+| Docker | Deploy sekali jalan, gampang update |
+
+---
+
+## 📸 Tampilan
+
+### Login
 ![Login](docs/01-login.png)
 
-### 📊 Dashboard
+### Dashboard
 ![Dashboard](docs/02-dashboard.png)
 
-### 🌐 Router Detail (admin view)
+### Router Detail
 ![Router Detail](docs/03-router-detail.png)
 
-### 👁 In-browser Backup Viewer (syntax highlight + line numbers)
+### Backup Viewer (in-browser, syntax highlight)
 ![View Backup](docs/04-view-backup.png)
 
-### 🔄 Diff antar 2 Backup
+### Diff (perubahan antar 2 backup)
 ![Diff](docs/05-diff.png)
 
-### ➕ Tambah Router (cuma butuh IP — sisanya auto-detect)
+### Tambah Router (form simple, IP aja, sisanya auto)
 ![Router New](docs/06-router-new.png)
 
-### 👥 User Management (admin only)
+### User Management
 ![Users](docs/07-users.png)
 
-### 🗑️ Modal Konfirmasi Delete
+### Delete Confirmation Modal
 ![Delete Modal](docs/08-delete-modal.png)
 
 ---
 
-## 🚀 Quick Install (Docker Compose)
+## 🛠️ Cara Pakai Setelah Install
 
-### Prasyarat
-- Linux server / VPS (Ubuntu 22.04+ / Debian 12+ recommended)
-- Docker + Docker Compose terinstall
-- Akses SSH ke MikroTik yang mau di-backup (user + password)
-- **Opsional**: Traefik + domain + Cloudflare (untuk HTTPS otomatis via Let's Encrypt)
+1. **Login** di URL yg ditampilkan
+2. **Tambah router** pertama: klik `Routers → ➕ Tambah Router`
+3. Isi **IP MikroTik + SSH credentials** → klik Tambah
+4. Panel akan **auto-detect** nama, model, lokasi via SSH
+5. Klik `🔌 Test Connection` lalu `▶ Backup Now` untuk backup pertama
+6. Buka router detail → klik `👁` untuk lihat isi `.rsc` di browser
+7. Klik `🔄 vs prev` untuk diff dengan backup sebelumnya
+8. (Optional) Tambah user lain di menu `Users` (admin only)
 
-### 1. Clone repo
+---
+
+## 🔐 Default Schedule
+
+Cron auto-backup default di `/etc/cron.d/mt-backup`:
+```
+0 8,18 * * *  → 08:00 + 18:00 daily
+```
+
+Edit manual kalau mau ganti jam atau per-router:
+```bash
+sudo nano /etc/cron.d/mt-backup
+sudo systemctl reload cron
+```
+
+---
+
+## 📂 Where Things Live
+
+| Path | Isi |
+|---|---|
+| `/opt/mt-backup/` | Project source (Dockerfile, docker-compose, scripts) |
+| `/opt/mt-backup/data/.env` | Secrets (Fernet key, session secret, bcrypt admin hash) |
+| `/opt/mt-backup/data/panel.sqlite` | Database (routers, users, logs) |
+| `/opt/mt-backup/backups/<ip>/` | File backup `.rsc` |
+| `/etc/cron.d/mt-backup` | Auto-backup cron |
+| `/var/log/mt-backup-cron.log` | Cron execution log |
+
+---
+
+## 🔧 Perintah Harian
 
 ```bash
-git clone https://github.com/ashadebi/mt-backup.git
-cd mt-backup
+# Login SSH ke VPS dulu, baru:
+
+# Lihat log container
+docker logs -f mt-backup
+
+# Restart
+docker restart mt-backup
+
+# Update ke versi terbaru
+cd /opt/mt-backup && git pull && docker compose -f docker-compose.simple.yml up -d --build
+# (atau docker-compose.https.yml jika pakai HTTPS mode)
+
+# Manual backup sekarang (tanpa nunggu cron)
+docker exec mt-backup python3 /app/scripts/backup.py
+
+# Reset admin password (password baru ditampilkan di terminal)
+curl -fsSL https://raw.githubusercontent.com/ashadebi/mt-backup/main/scripts/install.sh \
+  | sudo bash -s -- --reset-admin
+
+# Cek isi .env (gak ada password plaintext — semua sudah di-hash)
+sudo cat /opt/mt-backup/data/.env
+```
+
+---
+
+## 🆘 Troubleshooting
+
+| Problem | Solusi |
+|---|---|
+| Lupa password admin | `curl ... install.sh --reset-admin` |
+| `permission denied` SSH ke MikroTik | Pastikan user MikroTik punya permission `/export` |
+| Panel gak start | `docker logs mt-backup` — cek error di paling akhir |
+| Port 8000 sudah dipakai | Ganti `ports: "8080:8000"` di `docker-compose.simple.yml`, lalu `docker compose up -d` |
+| HTTPS gak jadi (LE gagal) | DNS A record belum pointing? cek `dig +short backup.example.com` |
+| Ingin ganti HTTPS ke standalone | `docker compose -f docker-compose.https.yml down && docker compose -f docker-compose.simple.yml up -d` |
+| Mau pindah dari standalone ke HTTPS | `docker compose -f docker-compose.simple.yml down` dulu, baru re-run `install.sh --with-https` |
+
+---
+
+## 🏗️ Advanced (kalau mau custom config)
+
+<details>
+<summary><b>Konfigurasi manual (tanpa install script)</b></summary>
+
+### 1. Clone & setup
+
+```bash
+git clone https://github.com/ashadebi/mt-backup.git /opt/mt-backup
+cd /opt/mt-backup
+mkdir -p data backups
 ```
 
 ### 2. Generate secrets
 
-Jalankan command berikut dan **simpan output-nya**:
-
 ```bash
-# Encryption key untuk password router di SQLite
+# Encryption key (untuk password SSH di SQLite)
 python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-# contoh output: TBLeMn…Ce0=
 
-# Session signing key untuk FastAPI
+# Session signing key
 python3 -c "import secrets; print(secrets.token_hex(32))"
-# contoh output: b8a4c7…4bee
 
-# Bcrypt hash untuk password admin (ganti YOUR_PASSWORD dengan password yg Bos mau)
+# Bcrypt hash untuk admin password
 python3 -c "import bcrypt; print(bcrypt.hashpw(b'YOUR_PASSWORD', bcrypt.gensalt(rounds=12)).decode())"
-# contoh output: $2b$12$Sqn6W632VN1uq/7lb0kzA.K.SNC8xQcvSV1MUN5EV44TdyaaJmJu6
 ```
 
-### 3. Buat `data/.env`
-
-```bash
-mkdir -p data backups
-cp .env.example data/.env
-nano data/.env
-```
-
-Isi dengan output dari step 2:
+### 3. Write `data/.env`
 
 ```ini
-MT_FERNET_KEY=<output_step_2_1>
-MT_SECRET_KEY=<output_step_2_2>
+MT_FERNET_KEY=<output_1>
+MT_SECRET_KEY=<output_2>
 MT_ADMIN_USERNAME=admin
-MT_ADMIN_PASSWORD_HASH=<output_step_2_3>
+MT_ADMIN_PASSWORD_HASH=<output_3>
+MT_PANEL_DOMAIN=backup.example.com
 MT_DATA_DIR=/app/data
 MT_BACKUP_DIR=/app/backups
 ```
 
-### 4a. Deploy standalone (langsung expose port 8000)
-
-Cocok untuk first-time user / testing.
+### 4. Build & start
 
 ```bash
-# Build image
-docker compose -f docker-compose.simple.yml build
-
-# Run
-docker compose -f docker-compose.simple.yml up -d
-
-# Cek status
-docker compose -f docker-compose.simple.yml ps
-
-# Lihat logs
-docker compose -f docker-compose.simple.yml logs -f
+docker compose -f docker-compose.simple.yml up -d --build
+# atau pakai docker-compose.https.yml untuk HTTPS
 ```
 
-Akses: `http://IP_VPS:8000/` → login pakai `admin` / password dari step 2.
-
-### 4b. Deploy dengan Traefik + HTTPS (production)
-
-Pastikan Traefik v3 sudah running di VPS Bos di network `hosting-public` (atau ganti nama network di `docker-compose.yml`).
-
-Edit `docker-compose.yml` bagian `traefik.http.routers.mt-backup.rule` — ganti `backup.teelee.my.id` dengan domain Bos:
-
-```yaml
-labels:
-  - traefik.http.routers.mt-backup.rule=Host(`backup.yourdomain.com`)
-```
-
-Lalu:
-
-```bash
-docker compose up -d --build
-docker compose logs -f
-```
-
-Akses: `https://backup.yourdomain.com/`
-
-### 5. Setup auto-backup cron (08:00 & 18:00 daily)
-
-Di **host VPS** (bukan di dalam container):
+### 5. Setup cron (opsional)
 
 ```bash
 cat > /etc/cron.d/mt-backup << 'EOF'
-# MikroTik Backup Panel — auto-backup at 08:00 and 18:00 daily
 SHELL=/bin/bash
-PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
-
 0 8,18 * * * root docker exec mt-backup python3 /app/scripts/backup.py >> /var/log/mt-backup-cron.log 2>&1
 EOF
-
-# Reload cron
 systemctl reload cron
-
-# Verify
-crontab -l  # atau: cat /etc/cron.d/mt-backup
 ```
 
-Atau kalau mau test manual:
+</details>
 
-```bash
-docker exec mt-backup python3 /app/scripts/backup.py
-```
+<details>
+<summary><b>Stack & dependencies</b></summary>
 
-### 6. Backup retention (optional, default)
+- **Backend**: FastAPI 0.115 + Uvicorn + Jinja2
+- **DB**: SQLite (built-in Python)
+- **SSH client**: Paramiko
+- **Crypto**: cryptography (Fernet) + bcrypt
+- **Container**: python:3.12-slim + tini
+- **Reverse proxy** (HTTPS mode): Traefik v3.2 + Let's Encrypt
 
-Default retention (`app/ssh_backup.py:cleanup_old_backups`):
-- **daily**: 7 hari
-- **weekly**: 30 hari
-- **monthly**: 365 hari
+Lihat `requirements.txt` lengkap.
 
-File `.rsc` lebih lama dari itu akan auto-delete pas cron run.
+</details>
 
----
+<details>
+<summary><b>Environment variables</b></summary>
 
-## 🔧 Cara Pakai
-
-### ➕ Tambah Router
-
-1. Login sebagai `admin`
-2. Klik **"➕ Tambah Router"** di sidebar Routers
-3. Isi **cuma 4 field**:
-   - **IP Address** — IP MikroTik (contoh: `192.168.88.1`)
-   - **SSH Port** — default `22`, sering diset `2282` untuk harden
-   - **Username SSH** — user dengan permission `/export`
-   - **Password SSH** — password user tsb
-4. Klik **➕ Tambah Router**
-5. Backend akan **auto-detect** via SSH:
-   - **Nama** ← `/system identity print`
-   - **Lokasi** ← `/system snmp print` (field location)
-   - **Model** ← `/system routerboard print`
-   - **Device type** ← prefix model (`CRS*`=switch, lain=router)
-   - **Versi** ← `/system resource print`
-6. Router langsung muncul di dashboard, backup berikutnya ikut cron
-
-> **Tips**: Untuk auto-detect lokasi, set dulu di router:  
-> `/system snmp set location="Ruang Server Lt.3" contact="admin@example.com"`
-
-### 👁 View Backup
-
-1. Buka detail router → tabel **Backup Files**
-2. Klik tombol **👁** (eye icon)
-3. File `.rsc` terbuka di browser dengan:
-   - Line numbers di kiri (sticky)
-   - Syntax highlight (comments gray italic, sections biru bold, set statements putih)
-   - Dark theme (VS Code style)
-   - Tombol **📋 Copy** untuk copy ke clipboard
-   - Tombol **⬇️ Download** kalau mau download
-
-### 🔄 Diff Antar Backup
-
-1. Buka detail router → klik **🔄 Pilih 2 File untuk Dibandingkan**
-2. Pilih File A (lama) dan File B (baru) dari dropdown
-3. Klik **🔄 Bandingkan**
-4. Hasil diff muncul dengan:
-   - 🟢 Hijau: baris ditambah (hanya di B)
-   - 🔴 Merah: baris dihapus (hanya di A)
-   - 🔵 Biru: hunk header `@@`
-   - Stats: `+N baris / -M baris`
-   - Metadata file (size, mtime, download link)
-
-Atau shortcut: tiap row di tabel Backup Files punya tombol **🔄 vs prev** → auto-diff dengan file sebelumnya.
-
-### 👥 Kelola User
-
-1. Login sebagai `admin`
-2. Klik **👥 Users** di sidebar
-3. **➕ Tambah User**:
-   - Username
-   - Password
-   - Role: `viewer` (lihat/download/diff) atau `admin` (full)
-   - Status: aktif/nonaktif
-4. Aksi lain per user:
-   - **🔑 Reset PW** — modal konfirmasi + set password baru
-   - **⏸/▶** — enable/disable user
-   - **🗑️** — hapus user (modal konfirmasi)
-
-> **Catatan**: User admin dari env (`MT_ADMIN_USERNAME`) **selalu aktif** dan gak bisa dihapus dari sini — untuk jaga-jaga kalau semua admin DB hilang.
-
-### Permission Matrix
-
-| Aksi | Viewer | Admin |
+| Variable | Default | Fungsi |
 |---|---|---|
-| Lihat dashboard / routers / backups | ✅ | ✅ |
-| Lihat isi backup di browser | ✅ | ✅ |
-| Download backup file | ✅ | ✅ |
-| Bandingkan diff | ✅ | ✅ |
-| Trigger backup manual | ❌ | ✅ |
-| Test connection | ❌ | ✅ |
-| Tambah / edit / hapus router | ❌ | ✅ |
-| Hapus file backup | ❌ | ✅ |
-| Hapus semua backup | ❌ | ✅ |
-| Kelola user | ❌ | ✅ |
+| `MT_FERNET_KEY` | (wajib) | Encrypt password SSH yg disimpan di DB |
+| `MT_SECRET_KEY` | (wajib) | Session signing key |
+| `MT_ADMIN_USERNAME` | `admin` | Username admin env (fallback) |
+| `MT_ADMIN_PASSWORD_HASH` | (wajib) | Bcrypt hash admin password |
+| `MT_CRON_TOKEN` | random | Token untuk POST /api/backup/run |
+| `MT_PANEL_DOMAIN` | - | Domain panel (untuk HTTPS mode) |
+| `MT_DATA_DIR` | `/app/data` | Direktori data di dalam container |
+| `MT_BACKUP_DIR` | `/app/backups` | Direktori backup di dalam container |
 
----
+</details>
 
-## 🔐 Security
+<details>
+<summary><b>API endpoints</b></summary>
 
-- **Path traversal protection** di semua endpoint file (`/backups/view`, `/backups/download`, `/backups/delete`, `/backups/delete-all-backups`) — pakai `Path.resolve().startswith(folder.resolve())`
-- **Password encrypted** di SQLite pakai Fernet (symmetric encryption)
-- **Session middleware** dengan HttpOnly + SameSite cookie
-- **CSRF-friendly** (form-based, no JSON APIs that need tokens)
-- **Bootstrap admin via env** yang gak bisa di-disable dari UI
-- **Role-based permission** di-backend (`require_admin` decorator) — gak bisa dibypass dari UI
+| Method | Path | Auth | Fungsi |
+|---|---|---|---|
+| GET | `/login` | none | Login page |
+| POST | `/login` | none | Submit credentials |
+| POST | `/logout` | session | Logout |
+| GET | `/` | session | Dashboard |
+| GET | `/routers` | session | List routers |
+| GET | `/routers/{id}` | session | Router detail + backup list |
+| GET | `/routers/new` | admin | Form tambah router |
+| POST | `/routers/new` | admin | Submit router |
+| POST | `/routers/{id}/edit` | admin | Update router |
+| POST | `/routers/{id}/delete` | admin | Delete router |
+| POST | `/routers/{id}/delete-all-backups` | admin | Hapus semua file backup |
+| POST | `/routers/{id}/backup` | admin | Trigger manual backup |
+| POST | `/routers/{id}/test` | admin | Test SSH connection |
+| GET | `/routers/{id}/diff?a=X&b=Y` | session | Lihat diff |
+| GET | `/backups` | session | List semua backup semua router |
+| GET | `/backups/view?ip=X&filename=Y` | session | Lihat isi `.rsc` |
+| GET | `/backups/download?ip=X&filename=Y` | session | Download `.rsc` |
+| POST | `/backups/delete?ip=X&filename=Y` | admin | Hapus 1 file |
+| GET | `/users` | admin | List users |
+| POST | `/users/new` | admin | Tambah user |
+| POST | `/users/{id}/toggle` | admin | Enable/disable user |
+| POST | `/users/{id}/delete` | admin | Hapus user |
+| POST | `/users/{id}/reset-password` | admin | Reset password user |
+| GET | `/healthz` | none | Healthcheck |
+| POST | `/api/backup/run` | token | Trigger via API (cron replacement) |
 
-### Disable bootstrap admin (opsional, untuk hardening ekstra)
-
-Setelah bikin admin DB, hapus `MT_ADMIN_USERNAME` & `MT_ADMIN_PASSWORD_HASH` dari `data/.env` dan restart. Admin harus via DB.
-
----
-
-## 📂 Struktur Project
-
-```
-mt-backup/
-├── app/
-│   ├── main.py              # FastAPI app, all routes
-│   ├── auth.py              # Login, session, require_admin
-│   ├── database.py          # SQLite CRUD
-│   ├── ssh_backup.py        # paramiko + MikroTik /export
-│   ├── static/
-│   │   └── style.css        # All CSS
-│   └── templates/
-│       ├── base.html        # Layout + sidebar + modal
-│       ├── login.html
-│       ├── dashboard.html
-│       ├── routers.html
-│       ├── router_detail.html
-│       ├── router_form.html
-│       ├── backups.html
-│       ├── diff.html
-│       ├── users.html
-│       ├── user_form.html
-│       └── view_backup.html
-├── scripts/
-│   └── backup.py            # Standalone cron script (di-exec di dalam container)
-├── data/                    # SQLite + .env (gitignored)
-├── backups/                 # .rsc files (gitignored)
-├── Dockerfile
-├── docker-compose.yml       # Traefik version
-├── docker-compose.simple.yml # Standalone (no Traefik)
-├── requirements.txt
-├── .env.example
-├── LICENSE
-└── README.md
-```
-
----
-
-## 🛠 Development (local, tanpa Docker)
-
-```bash
-cd mt-backup
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-
-# Generate dev secrets
-export MT_FERNET_KEY=$(python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
-export MT_SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
-export MT_ADMIN_USERNAME=admin
-export MT_ADMIN_PASSWORD_HASH=$(python3 -c "import bcrypt; print(bcrypt.hashpw(b'admin', bcrypt.gensalt(rounds=12)).decode())")
-
-# Run
-mkdir -p data backups
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-Akses: `http://localhost:8000/` → login `admin` / `admin`.
+</details>
 
 ---
 
@@ -343,30 +283,4 @@ MIT — see [LICENSE](LICENSE).
 
 ## 🙏 Credits
 
-Dibuat oleh [Agoes](https://github.com/ashadebi) untuk backup MikroTik router pribadi/komersial.  
-Powered by FastAPI + Paramiko + SQLite. UI vanilla CSS, no framework.
-
----
-
-## 🐛 Troubleshooting
-
-| Problem | Solusi |
-|---|---|
-| `MT_ADMIN_USERNAME/PASSWORD_HASH not set` | Edit `data/.env`, isi dari step 2 |
-| `SSH connect failed` di auto-detect | Cek IP/port reachable dari container: `docker exec mt-backup nc -zv IP 2282` |
-| `Path invalid` di download/view | Bug — laporkan dengan filename yang dicoba |
-| `Identity file not accessible` | SSH key host perlu `chmod 600` dan owned by current user |
-| Backup gak muncul di dashboard | Cek `/var/log/mt-backup-cron.log` di host + `docker logs mt-backup` |
-| Lupa password admin env | Login SSH ke VPS → `cat data/.env` atau buat password baru |
-
----
-
-## 🗺️ Roadmap
-
-- [ ] Telegram notification kalau ada diff config
-- [ ] Per-router schedule (instead of global 08:00/18:00)
-- [ ] Encrypted backup (.rsc.enc) untuk compliance
-- [ ] Multi-tenancy (multiple orgs)
-- [ ] LDAP/SSO integration
-- [ ] Audit log export (CSV/JSON)
-- [ ] Webhook integration (Slack, Discord)
+By [Agoes](https://github.com/ashadebi). FastAPI + Paramiko + SQLite + vanilla CSS.

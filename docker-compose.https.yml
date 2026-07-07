@@ -1,0 +1,75 @@
+version: "3.9"
+
+# Docker Compose for HTTPS mode (includes Traefik + Let's Encrypt)
+# Used by install.sh --with-https
+#
+# DNS A record for MT_PANEL_DOMAIN must point to this server's public IP
+# before running, otherwise Let's Encrypt HTTP-01 challenge will fail.
+
+services:
+  traefik:
+    image: traefik:v3.2
+    container_name: mt-backup-traefik
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=mt-backup-public
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.web.http.redirections.entryPoint.to=websecure
+      - --entrypoints.web.http.redirections.entryPoint.scheme=https
+      - --certificatesresolvers.letsencrypt.acme.email=${LETSENCRYPT_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+      - --api=false
+      - --ping=true
+      - --accesslog=true
+      - --accesslog.fields.defaultmode=keep
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./data/letsencrypt:/letsencrypt:rw
+    networks:
+      - mt-backup-public
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  mt-backup:
+    build: .
+    image: mt_backup:latest
+    container_name: mt-backup
+    restart: unless-stopped
+    env_file:
+      - data/.env
+    volumes:
+      - ./data:/app/data
+      - ./backups:/app/backups
+    networks:
+      - mt-backup-public
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=mt-backup-public
+      - traefik.http.routers.mt-backup.rule=Host(`${MT_PANEL_DOMAIN}`)
+      - traefik.http.routers.mt-backup.entrypoints=websecure
+      - traefik.http.routers.mt-backup.tls=true
+      - traefik.http.routers.mt-backup.tls.certresolver=letsencrypt
+      - traefik.http.services.mt-backup.loadbalancer.server.port=8000
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+networks:
+  mt-backup-public:
+    name: mt-backup-public
+    driver: bridge
