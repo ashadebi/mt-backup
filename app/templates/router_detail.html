@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}{{ router.name }} — MikroTik Backup{% endblock %}
+{% block page_title %}{{ router.name }}{% endblock %}
+
+{% block content %}
+<div class="page">
+  {% if qp.get('backup') == 'ok' %}
+    <div class="alert alert-success">✅ Backup berhasil: <code>{{ qp.get('file') }}</code></div>
+  {% elif qp.get('backup') == 'fail' %}
+    <div class="alert alert-error">✗ Backup gagal: {{ qp.get('error') }}</div>
+  {% endif %}
+
+  <div class="page-header">
+    <div>
+      <h1>🌐 {{ router.name }} <span class="badge badge-{{ router.device_type }}">{{ router.device_type }}</span></h1>
+      <div class="router-meta">
+        <code class="ip-code">📡 {{ router.ip }}:{{ router.port }}</code>
+        {% if router.identity %}<span class="badge badge-info" title="RouterOS identity (auto-detected)">🆔 {{ router.identity }}</span>{% endif %}
+        {% if router.location %}<span class="muted">📍 {{ router.location }}</span>{% endif %}
+        <span class="muted">👤 {{ router.username }}</span>
+      </div>
+      <p class="muted small" style="margin-top: 6px;">📁 Folder backup: <code>{{ backup_dir }}</code></p>
+    </div>
+    <div class="action-group">
+      {% if session_user and session_user.role == 'admin' %}
+      <form method="post" action="/routers/{{ router.id }}/test" id="testForm" style="display:inline">
+        <button type="button" class="btn-secondary" onclick="runTest()">🔌 Test Connection</button>
+      </form>
+      <form method="post" action="/routers/{{ router.id }}/backup" style="display:inline">
+        <button type="submit" class="btn-primary">⚡ Backup Sekarang</button>
+      </form>
+      <a href="/routers/{{ router.id }}/edit" class="btn-secondary">✏️ Edit</a>
+      <button type="button" class="btn-danger"
+        onclick="showConfirmModal(
+          'Hapus Router?',
+          'Hapus router {{ router.name }} ({{ router.ip }})?\\n\\nFile backup .rsc TIDAK ikut terhapus.\\nUntuk menghapus file backup, gunakan tombol 🗑️ di tabel bawah.',
+          '/routers/{{ router.id }}/delete',
+          '🗑️ Hapus Router'
+        )">🗑️ Hapus Router</button>
+      {% else %}
+      <span class="badge badge-info" style="font-size: 12px;">👁 Mode viewer — hanya lihat/download/diff</span>
+      {% endif %}
+    </div>
+    </div>
+  </div>
+
+  <div class="card" id="testResult" style="display:none">
+    <h2>🔌 Test Connection Result</h2>
+    <pre id="testResultBody" class="code-block"></pre>
+  </div>
+
+  <div class="card">
+    <h2>📁 Backup Files ({{ files|length }})</h2>
+  {% if qp.get('deleted') %}
+    {% if qp.get('deleted') == 'fail' %}
+      <div class="alert alert-error">⚠️ File backup tidak ditemukan atau gagal dihapus.</div>
+    {% else %}
+      <div class="alert alert-success">✅ File backup <code>{{ qp.get('deleted') }}</code> berhasil dihapus.</div>
+    {% endif %}
+  {% endif %}
+  {% if qp.get('bulk_deleted') %}
+    {% set n = qp.get('bulk_deleted')|int %}
+    <div class="alert alert-{{ 'success' if n > 0 else 'error' }}">
+      {{ '✅ Berhasil menghapus ' ~ n ~ ' file backup.' if n > 0 else '⚠️ Tidak ada file backup yang dihapus.' }}
+    </div>
+  {% endif %}
+    {% if files %}
+    <table class="data-table">
+      <thead>
+        <tr><th>File</th><th>Type</th><th>Size</th><th>Modified</th><th>Aksi</th></tr>
+      </thead>
+      <tbody>
+        {% for f in files %}
+        <tr>
+          <td><code>{{ f.filename }}</code></td>
+          <td><span class="badge badge-{{ f.type }}">{{ f.type }}</span></td>
+          <td>{{ (f.size / 1024)|round(1) }} KB</td>
+          <td>{{ f.mtime[:19].replace('T', ' ') }}</td>
+          <td class="action-cell">
+            <a href="/backups/view?ip={{ router.ip }}&filename={{ f.filename }}" class="btn-sm" title="Lihat isi backup di browser">👁</a>
+            <a href="/backups/download?ip={{ router.ip }}&filename={{ f.filename }}" class="btn-sm" title="Download file">⬇️</a>
+            {% if not loop.first %}
+              {% set prev = files[loop.index0 - 1] %}
+              <a href="/routers/{{ router.id }}/diff?a={{ prev.filename }}&b={{ f.filename }}" class="btn-sm" title="Bandingkan dengan backup sebelumnya">🔄</a>
+            {% endif %}
+            {% if session_user and session_user.role == 'admin' %}
+            <button type="button" class="btn-sm btn-danger-sm" title="Hapus file backup ini"
+              onclick="confirmDeleteFile('{{ f.filename }}', '{{ router.ip }}')">🗑️</button>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if files|length >= 2 %}
+    <div style="margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap;">
+      <a href="/routers/{{ router.id }}/diff" class="btn-secondary">🔄 Pilih 2 File untuk Dibandingkan</a>
+      {% if session_user and session_user.role == 'admin' %}
+      <button type="button" class="btn-danger"
+        onclick="showConfirmModal(
+          'Hapus SEMUA Backup?',
+          'Hapus SEMUA file backup (.rsc) untuk router {{ router.name }}?\n\nTotal {{ files|length }} file akan dihapus.\nRouter entry di database TETAP ADA.\n\nTindakan ini tidak dapat dibatalkan.',
+          '/routers/{{ router.id }}/delete-all-backups',
+          '🗑️ Hapus Semua ({{ files|length }})'
+        )">🗑️ Hapus Semua Backup</button>
+      {% endif %}
+    </div>
+    {% endif %}
+    {% else %}
+    <p class="empty-state">Belum ada file backup. Klik "⚡ Backup Sekarang" atau tunggu cron 08:00 / 18:00.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>📋 Backup Logs</h2>
+    {% if logs %}
+    <table class="data-table">
+      <thead>
+        <tr><th>Waktu</th><th>File</th><th>Size</th><th>Status</th><th>Error</th></tr>
+      </thead>
+      <tbody>
+        {% for l in logs %}
+        <tr>
+          <td>{{ l.created_at[:19].replace('T', ' ') }}</td>
+          <td><code>{{ l.filename }}</code></td>
+          <td>{{ (l.size / 1024)|round(1) }} KB</td>
+          <td>{% if l.status == 'success' %}<span class="badge badge-success">✓</span>{% else %}<span class="badge badge-error">✗</span>{% endif %}</td>
+          <td><code class="muted">{{ (l.error[:80] if l.error) or '—' }}</code></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">Belum ada log.</p>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+async function runTest() {
+  const card = document.getElementById('testResult');
+  const body = document.getElementById('testResultBody');
+  card.style.display = 'block';
+  body.textContent = 'Testing...';
+  try {
+    const resp = await fetch('/routers/{{ router.id }}/test', { method: 'POST' });
+    const data = await resp.json();
+    body.textContent = JSON.stringify(data, null, 2);
+  } catch (e) {
+    body.textContent = 'Error: ' + e.message;
+  }
+}
+
+function confirmDeleteFile(filename, ip) {
+  showConfirmModal(
+    'Hapus File Backup?',
+    'Hapus file backup:\n' + filename + '\n\nTindakan ini tidak dapat dibatalkan.',
+    '/backups/delete?ip=' + encodeURIComponent(ip) + '&filename=' + encodeURIComponent(filename),
+    '🗑️ Hapus File'
+  );
+}
+</script>
+{% endblock %}

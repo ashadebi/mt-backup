@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if router else 'Tambah' }} Router — MikroTik Backup{% endblock %}
+{% block page_title %}{{ 'Edit' if router else 'Tambah' }} Router{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="page-header">
+    <h1>{{ '✏️ Edit' if router else '➕ Tambah' }} {{ 'Router' if not router or router.device_type == 'router' else 'Switch' }}</h1>
+  </div>
+
+  <div class="card form-card">
+    {% if error %}<div class="alert alert-error">⚠️ {{ error }}</div>{% endif %}
+    <form method="post" action="{{ '/routers/' ~ router.id ~ '/edit' if router else '/routers/new' }}">
+      <div class="form-grid">
+        {% if not router %}
+        <div class="form-group full">
+          <div class="info-box">
+            ℹ️ Setelah submit, panel akan <strong>auto-detect</strong> dari router:
+            <ul style="margin: 6px 0 0 20px; font-size: 13px;">
+              <li><strong>Nama</strong> ← <code>/system identity print</code></li>
+              <li><strong>Lokasi</strong> ← <code>/system snmp print</code> (field location)</li>
+              <li><strong>Device type</strong> ← <code>/system routerboard print</code> (CRS* = switch, lain = router)</li>
+              <li><strong>Versi</strong> ← <code>/system resource print</code></li>
+            </ul>
+            Pastikan SNMP sudah di-set (atau minimal identity) di router agar auto-detect berhasil.
+          </div>
+        </div>
+        {% endif %}
+        <div class="form-group">
+          <label for="ip">IP Address *</label>
+          <input id="ip" name="ip" type="text" required
+                 value="{{ router.ip if router else (ip if ip else '') }}"
+                 placeholder="10.244.244.78">
+        </div>
+        <div class="form-group">
+          <label for="port">SSH Port</label>
+          <input id="port" name="port" type="number" min="1" max="65535"
+                 value="{{ router.port if router else (port if port else 2282) }}">
+        </div>
+        <div class="form-group">
+          <label for="username">Username SSH *</label>
+          <input id="username" name="username" type="text" required
+                 value="{{ router.username if router else (username if username else '') }}">
+        </div>
+        <div class="form-group full">
+          <label for="password">Password SSH {{ '(kosongkan jika tidak diubah)' if router else '*' }}</label>
+          <input id="password" name="password" type="password"
+                 {{ '' if router else 'required' }}
+                 placeholder="{{ '••••••••' if router else 'password router/switch' }}">
+          {% if router %}<small class="muted">Password di-encrypt (Fernet) di SQLite.</small>{% endif %}
+        </div>
+
+        {% if router %}
+        {# Edit mode: show all fields editable #}
+        <div class="form-group">
+          <label for="name">Nama *</label>
+          <input id="name" name="name" type="text" required
+                 value="{{ router.name }}"
+                 placeholder="contoh: Router-Pusat-01">
+        </div>
+        <div class="form-group">
+          <label for="device_type">Device Type</label>
+          <select id="device_type" name="device_type">
+            <option value="router" {% if router.device_type == 'router' %}selected{% endif %}>Router</option>
+            <option value="switch" {% if router.device_type == 'switch' %}selected{% endif %}>Switch</option>
+          </select>
+        </div>
+        <div class="form-group full">
+          <label for="location">Lokasi</label>
+          <input id="location" name="location" type="text"
+                 value="{{ router.location }}"
+                 placeholder="contoh: Ruang Server Lt.3">
+        </div>
+        {% else %}
+        {# New mode: show read-only preview of auto-detected info if available #}
+        {% if detected %}
+        <div class="form-group full">
+          <div class="info-box success">
+            ✅ <strong>Auto-detected dari router:</strong>
+            <table class="kv-table" style="margin-top: 8px;">
+              <tr><th>Nama</th><td>{{ detected.identity or '—' }}</td></tr>
+              <tr><th>Lokasi</th><td>{{ detected.location or '—' }}</td></tr>
+              <tr><th>Model</th><td>{{ detected.model or '—' }}</td></tr>
+              <tr><th>Versi</th><td>{{ detected.version or '—' }}</td></tr>
+              <tr><th>Device Type</th><td>{{ detected.device_type }}</td></tr>
+            </table>
+          </div>
+        </div>
+        {% endif %}
+        {% endif %}
+
+        <div class="form-group">
+          <label for="enabled">Status</label>
+          <select id="enabled" name="enabled">
+            <option value="1" {% if not router or router.enabled %}selected{% endif %}>Aktif (auto-backup)</option>
+            <option value="0" {% if router and not router.enabled %}selected{% endif %}>Nonaktif</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-actions">
+        <a href="/routers" class="btn-secondary">← Batal</a>
+        <button type="submit" class="btn-primary">{{ 'Simpan Perubahan' if router else '➕ Tambah Router' }}</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

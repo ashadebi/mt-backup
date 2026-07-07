@@ -1,0 +1,19 @@
+# Simple docker-compose for first-time users (no Traefik, direct port exposure).
+# Use this if you don't already have Traefik running.
+#
+# Production deployment with Traefik + Let's Encrypt: see docker-compose.yml
+
+services:
+  mt-backup:
+    build: .
+    image: mt_backup:latest
+    container_name: mt-backup
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - data/.env
+    volumes:
+      - ./data:/app/data
+      - ./backups:/app/backups
+      - /etc/localtime:/etc/localtime:ro

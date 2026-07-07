@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — MikroTik Backup{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="page-header">
+    <h1>📊 Overview</h1>
+    <p class="muted">Statistik backup router & switch MikroTik</p>
+  </div>
+
+  <style>
+    .router-name { font-weight: 700; font-size: 15px; color: #0f172a; }
+    .router-meta { font-size: 12px; color: #64748b; margin-top: 2px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .ip-code { background: #f1f5f9; padding: 1px 6px; border-radius: 4px; font-size: 11px; color: #334155; }
+    .badge-info { background: #dbeafe; color: #1e40af; font-size: 11px; padding: 2px 8px; border-radius: 6px; font-weight: 500; }
+  </style>
+
+  <div class="stat-grid">
+    <div class="stat-card stat-blue">
+      <div class="stat-label">Total Routers</div>
+      <div class="stat-value">{{ stats.total_routers }}</div>
+      <div class="stat-sub">{{ stats.active_routers }} aktif</div>
+    </div>
+    <div class="stat-card stat-green">
+      <div class="stat-label">Switches</div>
+      <div class="stat-value">{{ stats.total_switches }}</div>
+      <div class="stat-sub">terdaftar</div>
+    </div>
+    <div class="stat-card stat-emerald">
+      <div class="stat-label">Backup Hari Ini</div>
+      <div class="stat-value">{{ stats.today_success }}</div>
+      <div class="stat-sub">berhasil</div>
+    </div>
+    <div class="stat-card {% if stats.today_failed > 0 %}stat-red{% else %}stat-gray{% endif %}">
+      <div class="stat-label">Gagal Hari Ini</div>
+      <div class="stat-value">{{ stats.today_failed }}</div>
+      <div class="stat-sub">job gagal</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>🖥️ System Resources</h2>
+    <div class="system-grid">
+      <div class="system-item">
+        <div class="system-label">CPU Load (1/5/15m)</div>
+        <div class="system-value">{{ "%.2f"|format(sys_stats.cpu_load_1) }} / {{ "%.2f"|format(sys_stats.cpu_load_5) }} / {{ "%.2f"|format(sys_stats.cpu_load_15) }}</div>
+        <div class="progress-bar"><div class="progress-fill" style="width: {{ [sys_stats.cpu_load_1 * 25, 100]|min }}%"></div></div>
+      </div>
+      <div class="system-item">
+        <div class="system-label">Memory</div>
+        <div class="system-value">{{ sys_stats.mem_used_mb }} / {{ sys_stats.mem_total_mb }} MB ({{ sys_stats.mem_percent }}%)</div>
+        <div class="progress-bar"><div class="progress-fill" style="width: {{ sys_stats.mem_percent }}%"></div></div>
+      </div>
+      <div class="system-item">
+        <div class="system-label">Disk</div>
+        <div class="system-value">{{ sys_stats.disk.used_gb }} / {{ sys_stats.disk.total_gb }} GB ({{ sys_stats.disk.percent }}%)</div>
+        <div class="progress-bar"><div class="progress-fill" style="width: {{ sys_stats.disk.percent }}%"></div></div>
+      </div>
+      <div class="system-item">
+        <div class="system-label">Total Backups</div>
+        <div class="system-value">{{ stats.total_backups }} files</div>
+        <div class="system-sub">{{ (stats.total_size_bytes / 1024 / 1024)|round(1) }} MB total</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>🌐 Routers & Switches</h2>
+    {% if routers %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Router</th><th>Type</th><th>Last Backup</th><th>Status</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in routers %}
+        <tr>
+          <td>
+            <div class="router-name">{{ r.name }}</div>
+            <div class="router-meta">
+              <code class="ip-code">{{ r.ip }}:{{ r.port }}</code>
+              {% if r.identity %}<span class="badge badge-info" title="RouterOS identity">🆔 {{ r.identity }}</span>{% endif %}
+              {% if r.location %}<span class="muted">· {{ r.location }}</span>{% endif %}
+            </div>
+          </td>
+          <td><span class="badge badge-{{ r.device_type }}">{{ r.device_type }}</span></td>
+          <td>
+            {% if r.last_backup_at %}
+              <span title="{{ r.last_backup_at }}">{{ r.last_backup_at[:16] }}</span>
+            {% else %}
+              <span class="muted">— belum pernah —</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if r.last_backup_status == 'success' %}
+              <span class="badge badge-success">✓ OK</span>
+            {% elif r.last_backup_status == 'failed' %}
+              <span class="badge badge-error">✗ Gagal</span>
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+          <td><a href="/routers/{{ r.id }}" class="btn-sm">Detail →</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">Belum ada router. <a href="/routers/new">Tambah router pertama</a>.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>📋 Backup Logs (10 Terbaru)</h2>
+    {% if logs %}
+    <table class="data-table">
+      <thead>
+        <tr><th>Waktu</th><th>Router</th><th>File</th><th>Size</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        {% for l in logs %}
+        <tr>
+          <td>{{ l.created_at[:19].replace('T', ' ') }}</td>
+          <td><strong>{{ l.router_name }}</strong> <code class="muted">{{ l.router_ip }}</code></td>
+          <td><code>{{ l.filename }}</code></td>
+          <td>{{ (l.size / 1024)|round(1) }} KB</td>
+          <td>{% if l.status == 'success' %}<span class="badge badge-success">✓</span>{% else %}<span class="badge badge-error">✗ {{ l.error[:50] if l.error }}</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">Belum ada backup log.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

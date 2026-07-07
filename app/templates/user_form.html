@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Tambah User — MikroTik Backup{% endblock %}
+{% block page_title %}➕ Tambah User{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="page-header">
+    <h1>➕ Tambah User Baru</h1>
+    <a href="/users" class="btn-secondary">← Kembali ke Users</a>
+  </div>
+
+  {% if error %}<div class="alert alert-error">⚠️ {{ error }}</div>{% endif %}
+
+  <div class="card">
+    <form method="post" action="/users/new">
+      <div class="form-grid">
+        <div class="form-group full">
+          <label for="username">Username *</label>
+          <input id="username" name="username" type="text" required
+                 placeholder="contoh: teknisi-bts"
+                 autocomplete="off">
+          <small class="muted">Hanya huruf kecil, angka, dash, underscore.</small>
+        </div>
+        <div class="form-group full">
+          <label for="password">Password *</label>
+          <input id="password" name="password" type="password" required
+                 placeholder="minimal 8 karakter"
+                 autocomplete="new-password">
+          <small class="muted">Password di-hash dengan bcrypt (12 rounds) sebelum disimpan.</small>
+        </div>
+        <div class="form-group">
+          <label for="role">Role</label>
+          <select id="role" name="role">
+            <option value="viewer" selected>👁 Viewer — hanya lihat/download/diff</option>
+            <option value="admin">⚙️ Admin — akses penuh</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="enabled">Status</label>
+          <select id="enabled" name="enabled">
+            <option value="1" selected>✓ Aktif (langsung bisa login)</option>
+            <option value="0">✗ Nonaktif (akun ada tapi tidak bisa login)</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-actions">
+        <a href="/users" class="btn-secondary">← Batal</a>
+        <button type="submit" class="btn-primary">➕ Buat User</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>ℹ️ Permission matrix</h3>
+    <table class="data-table">
+      <thead><tr><th>Aksi</th><th>Viewer</th><th>Admin</th></tr></thead>
+      <tbody>
+        <tr><td>Lihat dashboard</td><td>✅</td><td>✅</td></tr>
+        <tr><td>Lihat daftar router</td><td>✅</td><td>✅</td></tr>
+        <tr><td>Lihat detail router + backup files</td><td>✅</td><td>✅</td></tr>
+        <tr><td>Lihat isi backup di browser</td><td>✅</td><td>✅</td></tr>
+        <tr><td>Download backup file</td><td>✅</td><td>✅</td></tr>
+        <tr><td>Bandingkan diff antar backup</td><td>✅</td><td>✅</td></tr>
+        <tr><td>Trigger backup manual</td><td>❌</td><td>✅</td></tr>
+        <tr><td>Test connection</td><td>❌</td><td>✅</td></tr>
+        <tr><td>Hapus file backup</td><td>❌</td><td>✅</td></tr>
+        <tr><td>Hapus semua backup</td><td>❌</td><td>✅</td></tr>
+        <tr><td>Tambah / edit / hapus router</td><td>❌</td><td>✅</td></tr>
+        <tr><td>Kelola user</td><td>❌</td><td>✅</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

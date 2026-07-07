@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Application runtime data (NEVER commit secrets)
+data/
+backups/
+logs/
+.env
+data/.env
+data/panel.sqlite
+data/panel.db
+data/ssh_known_hosts
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.bak
+*~
+*.[Bb]ak
+
+# Build artefacts
+dist/
+build/
+
+# Local screenshot workspace (development only)
+../mt-backup-screenshots/

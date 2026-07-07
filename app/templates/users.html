@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Users — MikroTik Backup{% endblock %}
+{% block page_title %}👥 Users{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="page-header">
+    <div>
+      <h1>👥 User Management</h1>
+      <p class="muted">Admin: buat user baru, non-aktifkan, atau hapus. User biasa (viewer) hanya bisa melihat, download, dan membandingkan backup.</p>
+    </div>
+    <a href="/users/new" class="btn-primary">➕ Tambah User</a>
+  </div>
+
+  <div class="alert alert-info">
+    ℹ️ User admin login via env (<code>MT_ADMIN_USERNAME</code>) selalu aktif dan tidak bisa dihapus dari sini.
+    Ini untuk jaga-jaga kalau semua admin user DB hilang.
+  </div>
+
+  <div class="card">
+    <h2>Daftar User ({{ users|length }})</h2>
+    {% if users %}
+    <table class="data-table">
+      <thead>
+        <tr><th>#</th><th>Username</th><th>Role</th><th>Status</th><th>Created</th><th>Aksi</th></tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td>{{ u.id }}</td>
+          <td><code>{{ u.username }}</code></td>
+          <td>
+            {% if u.role == 'admin' %}
+              <span class="badge badge-warning">⚙️ admin</span>
+            {% else %}
+              <span class="badge badge-info">👁 viewer</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if u.enabled %}
+              <span class="badge badge-success">✓ aktif</span>
+            {% else %}
+              <span class="badge badge-error">✗ nonaktif</span>
+            {% endif %}
+          </td>
+          <td><span class="muted">{{ u.created_at[:19].replace('T', ' ') }}</span></td>
+          <td class="action-cell">
+            <button type="button" class="btn-sm"
+              onclick="showConfirmModal(
+                'Reset Password?',
+                'Reset password user \'{{ u.username }}\'?\n\nPassword baru akan di-hash dan disimpan.\n\nMasukkan password baru setelah konfirmasi.',
+                '/users/{{ u.id }}/reset-password',
+                '🔑 Lanjut Reset'
+              )"
+              data-prompt="password"
+              onclick2="promptAndSubmit(this, \'/users/{{ u.id }}/reset-password\', \'password\')">🔑 Reset PW</button>
+            <button type="button" class="btn-sm"
+              onclick="showConfirmModal(
+                '{{ 'Nonaktifkan' if u.enabled else 'Aktifkan' }} User?',
+                '{{ 'Nonaktifkan user' if u.enabled else 'Aktifkan user' }} \'{{ u.username }}\'?',
+                '/users/{{ u.id }}/toggle',
+                '{{ '⏸ Nonaktifkan' if u.enabled else '▶ Aktifkan' }}'
+              )">{{ '⏸' if u.enabled else '▶' }}</button>
+            <button type="button" class="btn-sm btn-danger-sm"
+              onclick="showConfirmModal(
+                'Hapus User?',
+                'Hapus user \'{{ u.username }}\' dari database?\n\nTindakan ini tidak dapat dibatalkan.\n\nFile backup TIDAK terhapus.',
+                '/users/{{ u.id }}/delete',
+                '🗑️ Hapus User'
+              )">🗑️</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">Belum ada user di database. Hanya admin dari env yang bisa login sekarang. Klik "➕ Tambah User" untuk membuat user baru.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

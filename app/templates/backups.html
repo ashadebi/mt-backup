@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Backups — MikroTik Backup{% endblock %}
+{% block page_title %}Backup Files{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="page-header">
+    <div>
+      <h1>📁 Backup Files</h1>
+      <p class="muted">
+        {% if selected_ip %}
+          Filter: <code>{{ selected_ip }}</code> · <a href="/backups">Lihat semua</a>
+        {% else %}
+          Semua file backup di semua router
+        {% endif %}
+      </p>
+    </div>
+    <form method="get" action="/backups" class="filter-form">
+      <select name="ip" onchange="this.form.submit()">
+        <option value="">— Semua router —</option>
+        {% for r in routers %}
+        <option value="{{ r.ip }}" {% if selected_ip == r.ip %}selected{% endif %}>
+          {{ r.name }} — {{ r.ip }}
+        </option>
+        {% endfor %}
+      </select>
+    </form>
+  </div>
+
+  <style>
+    .router-meta { font-size: 12px; color: #64748b; margin-top: 2px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .ip-code { background: #f1f5f9; padding: 1px 6px; border-radius: 4px; font-size: 11px; color: #334155; }
+  </style>
+
+  {% if files %}
+  <div class="card">
+    <table class="data-table">
+      <thead>
+        <tr><th>Router</th><th>File</th><th>Type</th><th>Size</th><th>Modified</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for f in files %}
+        <tr>
+          <td>
+            {% if f.name %}<strong>{{ f.name }}</strong>{% endif %}
+            <div class="router-meta"><code class="ip-code">{{ f.ip }}</code> <span class="muted">· {{ f.dir_name }}</span></div>
+          </td>
+          <td><code>{{ f.filename }}</code></td>
+          <td><span class="badge badge-{{ f.type }}">{{ f.type }}</span></td>
+          <td>{{ (f.size / 1024)|round(1) }} KB</td>
+          <td>{{ f.mtime[:19].replace('T', ' ') }}</td>
+          <td class="action-cell">
+            <a href="/backups/view?ip={{ f.ip }}&filename={{ f.filename }}" class="btn-sm" title="Lihat di browser">👁</a>
+            <a href="/backups/download?ip={{ f.ip }}&filename={{ f.filename }}" class="btn-sm" title="Download">⬇️</a>
+            {% if session_user and session_user.role == 'admin' %}
+            <button type="button" class="btn-sm btn-danger-sm" title="Hapus file backup ini"
+              onclick="showConfirmModal(
+                'Hapus File Backup?',
+                'Hapus file backup:\n{{ f.filename }}\n\nRouter: {{ f.name }} ({{ f.ip }})\n\nTindakan ini tidak dapat dibatalkan.',
+                '/backups/delete?ip={{ f.ip }}&filename={{ f.filename }}',
+                '🗑️ Hapus File'
+              )">🗑️</button>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card empty-state">
+    <p>Belum ada file backup.</p>
+    <p class="muted">Tambahkan router dulu, lalu jalankan backup manual atau tunggu cron 08:00 / 18:00.</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

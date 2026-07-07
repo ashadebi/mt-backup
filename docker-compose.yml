@@ -1,0 +1,33 @@
+version: "3.9"
+
+services:
+  mt-backup:
+    build: .
+    image: mt_backup:latest
+    container_name: mt-backup
+    restart: unless-stopped
+    env_file:
+      - data/.env
+    volumes:
+      - ./data:/app/data
+      - ./backups:/app/backups
+    networks:
+      - hosting-public
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=hosting-public
+      - traefik.http.routers.mt-backup.rule=Host(`backup.teelee.my.id`)
+      - traefik.http.routers.mt-backup.entrypoints=websecure
+      - traefik.http.routers.mt-backup.tls=true
+      - traefik.http.routers.mt-backup.tls.certresolver=letsencrypt
+      - traefik.http.routers.mt-backup-web.rule=Host(`backup.teelee.my.id`)
+      - traefik.http.routers.mt-backup-web.entrypoints=web
+      - traefik.http.routers.mt-backup-web.middlewares=mt-backup-https-redirect
+      - traefik.http.middlewares.mt-backup-https-redirect.redirectscheme.scheme=https
+      - traefik.http.middlewares.mt-backup-https-redirect.redirectscheme.permanent=true
+      - traefik.http.services.mt-backup.loadbalancer.server.port=8000
+
+networks:
+  hosting-public:
+    external: true
+    name: hosting-public

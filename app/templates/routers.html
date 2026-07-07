@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Routers — MikroTik Backup{% endblock %}
+{% block page_title %}Routers & Switches{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="page-header">
+    <div>
+      <h1>🌐 Routers & Switches</h1>
+      <p class="muted">{{ routers|length }} device terdaftar</p>
+    </div>
+    <a href="/routers/new" class="btn-primary">➕ Tambah Router</a>
+  </div>
+
+  {% if routers %}
+  <div class="card">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Nama</th><th>IP:Port</th><th>User</th><th>Type</th><th>Lokasi</th>
+          <th>Status</th><th>Last Backup</th><th>Aksi</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in routers %}
+        <tr>
+          <td><strong>{{ r.name }}</strong></td>
+          <td><code>{{ r.ip }}:{{ r.port }}</code></td>
+          <td><code>{{ r.username }}</code></td>
+          <td><span class="badge badge-{{ r.device_type }}">{{ r.device_type }}</span></td>
+          <td>{{ r.location or '—' }}</td>
+          <td>
+            {% if r.enabled %}<span class="badge badge-success">aktif</span>
+            {% else %}<span class="badge badge-gray">nonaktif</span>{% endif %}
+          </td>
+          <td>
+            {% if r.last_backup_at %}
+              {% if r.last_backup_status == 'success' %}
+                <span class="badge badge-success">✓ {{ r.last_backup_at[:16] }}</span>
+              {% else %}
+                <span class="badge badge-error">✗ gagal</span>
+              {% endif %}
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+          <td>
+            <a href="/routers/{{ r.id }}" class="btn-sm">Detail</a>
+            <a href="/routers/{{ r.id }}/edit" class="btn-sm">Edit</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card empty-state">
+    <p>Belum ada router terdaftar.</p>
+    <a href="/routers/new" class="btn-primary">➕ Tambah Router Pertama</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}{{ filename }} — {{ router.name }}{% endblock %}
+{% block page_title %}👁 {{ filename }}{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="page-header">
+    <div>
+      <h1>👁 Backup Content</h1>
+      <p class="router-meta">
+        <strong>{{ router.name }}</strong>
+        <code class="ip-code">📡 {{ router.ip }}:{{ router.port }}</code>
+        {% if router.identity %}<span class="badge badge-info">🆔 {{ router.identity }}</span>{% endif %}
+      </p>
+      <p class="muted small" style="margin-top: 6px;">
+        📄 <code>{{ filename }}</code> · {{ (size / 1024)|round(1) }} KB · {{ mtime[:19].replace('T', ' ') }} · {{ line_count }} baris
+      </p>
+    </div>
+    <div class="action-group">
+      <a href="/routers/{{ router.id }}" class="btn-secondary">← Kembali</a>
+      <a href="/backups/download?ip={{ ip }}&filename={{ filename }}" class="btn-primary">⬇️ Download</a>
+      <button type="button" class="btn-secondary" onclick="copyToClipboard()">📋 Copy</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <pre class="rsc-viewer"><code id="rscContent">{% for line in lines %}<span class="rsc-line"><span class="rsc-lineno">{{ line.num }}</span><span class="rsc-text {{ line.cls }}">{{ line.text }}</span>
+</span>{% endfor %}</code></pre>
+  </div>
+</div>
+
+<script>
+function copyToClipboard() {
+  const text = document.getElementById('rscContent').innerText;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = event.target;
+    const orig = btn.textContent;
+    btn.textContent = '✅ Tersalin!';
+    setTimeout(() => { btn.textContent = orig; }, 1500);
+  });
+}
+</script>
+{% endblock %}
