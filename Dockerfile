@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Install cron + tini for proper signal handling
 RUN apt-get update -qq && \
-    apt-get install -y --no-install-recommends cron tini && \
+    apt-get install -y --no-install-recommends cron tini tzdata && \
     rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -20,6 +20,7 @@ RUN mkdir -p /app/data /app/backups /app/logs && \
 ENV PYTHONUNBUFFERED=1
 ENV MT_DATA_DIR=/app/data
 ENV MT_BACKUP_DIR=/app/backups
+ENV TZ=Asia/Jakarta
 
 EXPOSE 8000
 

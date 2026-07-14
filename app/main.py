@@ -2,7 +2,6 @@
 import os
 import secrets
 import shutil
-from datetime import datetime
 from pathlib import Path
 from fastapi import FastAPI, Form, Request, HTTPException, Depends
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -12,6 +11,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from app import auth, database, ssh_backup
+from app.time_utils import local_fromtimestamp, local_iso, local_now
 
 app = FastAPI(title="MikroTik Backup Panel")
 app.add_middleware(
@@ -51,7 +51,7 @@ def _ctx(request: Request, **extra) -> dict:
     base = {
         "request": request,
         "session_user": auth.current_user(request),
-        "current_year": datetime.now().year,
+        "current_year": local_now().year,
     }
     base.update(extra)
     return base
@@ -360,9 +360,9 @@ def router_diff(
             content_a = path_a.read_text(encoding="utf-8", errors="replace")
             content_b = path_b.read_text(encoding="utf-8", errors="replace")
             file_a_meta = {"name": a, "size": path_a.stat().st_size,
-                           "mtime": datetime.fromtimestamp(path_a.stat().st_mtime).isoformat()}
+                           "mtime": local_fromtimestamp(path_a.stat().st_mtime).isoformat()}
             file_b_meta = {"name": b, "size": path_b.stat().st_size,
-                           "mtime": datetime.fromtimestamp(path_b.stat().st_mtime).isoformat()}
+                           "mtime": local_fromtimestamp(path_b.stat().st_mtime).isoformat()}
             lines_a = content_a.splitlines(keepends=True)
             lines_b = content_b.splitlines(keepends=True)
             raw = list(difflib.unified_diff(
@@ -501,7 +501,7 @@ def backup_view(
         raise HTTPException(status_code=404, detail="File not found")
     content = file_resolved.read_text(encoding="utf-8", errors="replace")
     size = file_resolved.stat().st_size
-    mtime_iso = datetime.fromtimestamp(file_resolved.stat().st_mtime).isoformat()
+    mtime_iso = local_fromtimestamp(file_resolved.stat().st_mtime).isoformat()
     lines = []
     for i, line in enumerate(content.splitlines(), 1):
         stripped = line.lstrip()
@@ -523,6 +523,57 @@ def backup_view(
     )
 
 
+def _backup_view_response(request: Request, router: dict, filename: str, user: dict):
+    """Render a backup file by router id without exposing IP in viewer URLs."""
+    path = ssh_backup.get_backup_path(router, filename)
+    if not path:
+        raise HTTPException(status_code=404, detail="File not found")
+    content = path.read_text(encoding="utf-8", errors="replace")
+    size = path.stat().st_size
+    mtime_iso = local_fromtimestamp(path.stat().st_mtime).isoformat()
+    lines = []
+    for i, line in enumerate(content.splitlines(), 1):
+        stripped = line.lstrip()
+        if stripped.startswith("#"):
+            cls = "rsc-comment"
+        elif stripped.startswith("/"):
+            cls = "rsc-section"
+        elif "=" in line and not line.startswith("/"):
+            cls = "rsc-set"
+        else:
+            cls = "rsc-default"
+        lines.append({"num": i, "text": line, "cls": cls})
+    return templates.TemplateResponse(
+        "view_backup.html",
+        _ctx(request,
+             lines=lines, line_count=len(lines),
+             filename=filename, ip=router["ip"],
+             router=router, size=size, mtime=mtime_iso, user=user),
+    )
+
+
+@app.get("/routers/{router_id}/backups/view", response_class=HTMLResponse)
+def router_backup_view(router_id: int, filename: str, request: Request, user=Depends(auth.require_login)):
+    router = database.get_router(router_id)
+    if not router:
+        raise HTTPException(status_code=404, detail="Router not found")
+    return _backup_view_response(request, router, filename, user)
+
+
+@app.get("/routers/{router_id}/backups/download")
+def router_backup_download(router_id: int, filename: str, request: Request, user=Depends(auth.require_login)):
+    router = database.get_router(router_id)
+    if not router:
+        raise HTTPException(status_code=404, detail="Router not found")
+    path = ssh_backup.get_backup_path(router, filename)
+    if not path:
+        raise HTTPException(status_code=404, detail="Backup not found")
+    return FileResponse(
+        path=str(path), media_type="application/octet-stream",
+        filename=filename,
+    )
+
+
 
 
 
@@ -538,6 +589,8 @@ def router_backup_now(router_id: int, request: Request, user=Depends(auth.requir
     if result.get("identity"):
         database.set_router_identity(router_id, result["identity"])
     if result["success"]:
+        ssh_backup.cleanup_promoted_backups(router, result["filename"])
+    if result["success"]:
         return RedirectResponse(url=f"/routers/{router_id}?backup=ok&file={result['filename']}", status_code=303)
     return RedirectResponse(
         url=f"/routers/{router_id}?backup=fail&error={result.get('error', '')[:200]}",
@@ -548,13 +601,33 @@ def router_backup_now(router_id: int, request: Request, user=Depends(auth.requir
 # ---- Backups list / download ----
 
 @app.get("/backups", response_class=HTMLResponse)
-def backups_list(request: Request, ip: str | None = None, user=Depends(auth.require_login)):
-    files = ssh_backup.list_all_backup_files(filter_ip=ip)
+def backups_list(
+    request: Request,
+    ip: str | None = None,
+    router_id: int | None = None,
+    user=Depends(auth.require_login),
+):
     routers = database.list_routers()
-    selected_ip = ip
+    selected_router = database.get_router(router_id) if router_id else None
+    filter_ip = selected_router["ip"] if selected_router else ip
+    files = ssh_backup.list_all_backup_files(filter_ip=filter_ip)
+    routers_by_ip = {r["ip"]: r for r in routers}
+    for f in files:
+        router = routers_by_ip.get(f["ip"])
+        f["router_id"] = router["id"] if router else None
+        f["display_name"] = router["name"] if router else f.get("name")
+        f["display_location"] = router.get("location") if router else ""
+    selected_ip = filter_ip
     return templates.TemplateResponse(
         "backups.html",
-        _ctx(request, files=files, routers=routers, selected_ip=selected_ip, user=user),
+        _ctx(
+            request,
+            files=files,
+            routers=routers,
+            selected_ip=selected_ip,
+            selected_router_id=selected_router["id"] if selected_router else None,
+            user=user,
+        ),
     )
 
 
@@ -637,10 +710,12 @@ def api_backup_run(request: Request, x_cron_token: str | None = None):
         database.set_last_backup(r["id"], status)
         if result.get("identity"):
             database.set_router_identity(r["id"], result["identity"])
+        promoted_deleted = ssh_backup.cleanup_promoted_backups(r, result["filename"]) if result["success"] else 0
         results.append({
             "router_id": r["id"], "ip": r["ip"], "name": r["name"],
             "identity": result.get("identity", ""),
             "status": status, "filename": result["filename"],
             "size": result["size"], "error": result.get("error"),
+            "promoted_deleted": promoted_deleted,
         })
-    return JSONResponse({"ran_at": datetime.utcnow().isoformat(), "results": results})
+    return JSONResponse({"ran_at": local_iso(), "results": results})

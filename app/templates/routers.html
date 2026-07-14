@@ -14,19 +14,46 @@
 
   {% if routers %}
   <div class="card">
-    <table class="data-table">
+    <div class="device-table-head">
+      <div>
+        <h2>Daftar Device</h2>
+        <p class="muted">Filter router/switch atau cari nama, lokasi, identity, dan status.</p>
+      </div>
+      <div class="device-controls" data-filter-target="routersTable">
+        <div class="search-box">
+          <span>🔎</span>
+          <input type="search" data-device-search placeholder="Cari device...">
+        </div>
+        <div class="segmented-control" aria-label="Filter device type">
+          <button type="button" class="active" data-device-filter="all">Semua</button>
+          <button type="button" data-device-filter="router">Router</button>
+          <button type="button" data-device-filter="switch">Switch</button>
+        </div>
+      </div>
+    </div>
+    <table class="data-table" id="routersTable">
       <thead>
         <tr>
+          {% if session_user and session_user.role == 'admin' %}
           <th>Nama</th><th>IP:Port</th><th>User</th><th>Type</th><th>Lokasi</th>
+          {% else %}
+          <th>Nama</th><th>Type</th><th>Lokasi</th>
+          {% endif %}
           <th>Status</th><th>Last Backup</th><th>Aksi</th>
         </tr>
       </thead>
       <tbody>
         {% for r in routers %}
-        <tr>
+        <tr
+          data-device-row
+          data-type="{{ r.device_type }}"
+          data-search="{{ (r.name ~ ' ' ~ r.device_type ~ ' ' ~ (r.identity or '') ~ ' ' ~ (r.location or '') ~ ' ' ~ (r.last_backup_status or '') ~ ' ' ~ ('aktif' if r.enabled else 'nonaktif'))|lower }}"
+        >
           <td><strong>{{ r.name }}</strong></td>
+          {% if session_user and session_user.role == 'admin' %}
           <td><code>{{ r.ip }}:{{ r.port }}</code></td>
           <td><code>{{ r.username }}</code></td>
+          {% endif %}
           <td><span class="badge badge-{{ r.device_type }}">{{ r.device_type }}</span></td>
           <td>{{ r.location or '—' }}</td>
           <td>
@@ -46,12 +73,15 @@
           </td>
           <td>
             <a href="/routers/{{ r.id }}" class="btn-sm">Detail</a>
+            {% if session_user and session_user.role == 'admin' %}
             <a href="/routers/{{ r.id }}/edit" class="btn-sm">Edit</a>
+            {% endif %}
           </td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
+    <p class="empty-state" data-empty-filter style="display:none">Tidak ada device yang cocok dengan filter.</p>
   </div>
   {% else %}
   <div class="card empty-state">
@@ -60,4 +90,40 @@
   </div>
   {% endif %}
 </div>
+<script>
+function setupDeviceFilter(scope) {
+  const searchInput = scope.querySelector('[data-device-search]');
+  const filterButtons = Array.from(scope.querySelectorAll('[data-device-filter]'));
+  const tableId = scope.getAttribute('data-filter-target');
+  const table = document.getElementById(tableId);
+  if (!searchInput || !table) return;
+  const rows = Array.from(table.querySelectorAll('[data-device-row]'));
+  const empty = table.parentElement.querySelector('[data-empty-filter]');
+  let activeType = 'all';
+
+  function applyFilter() {
+    const query = searchInput.value.trim().toLowerCase();
+    let shown = 0;
+    rows.forEach((row) => {
+      const matchesType = activeType === 'all' || row.dataset.type === activeType;
+      const matchesQuery = !query || (row.dataset.search || '').includes(query);
+      const visible = matchesType && matchesQuery;
+      row.style.display = visible ? '' : 'none';
+      if (visible) shown += 1;
+    });
+    if (empty) empty.style.display = shown ? 'none' : 'block';
+  }
+
+  filterButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      filterButtons.forEach((btn) => btn.classList.remove('active'));
+      button.classList.add('active');
+      activeType = button.dataset.deviceFilter || 'all';
+      applyFilter();
+    });
+  });
+  searchInput.addEventListener('input', applyFilter);
+}
+document.querySelectorAll('[data-filter-target]').forEach(setupDeviceFilter);
+</script>
 {% endblock %}

@@ -8,6 +8,8 @@ services:
     restart: unless-stopped
     env_file:
       - data/.env
+    environment:
+      TZ: ${TZ:-Asia/Jakarta}
     volumes:
       - ./data:/app/data
       - ./backups:/app/backups

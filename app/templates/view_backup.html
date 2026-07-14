@@ -9,7 +9,11 @@
       <h1>👁 Backup Content</h1>
       <p class="router-meta">
         <strong>{{ router.name }}</strong>
+        {% if session_user and session_user.role == 'admin' %}
         <code class="ip-code">📡 {{ router.ip }}:{{ router.port }}</code>
+        {% else %}
+        <span class="secret-hidden">🔒 IP disembunyikan</span>
+        {% endif %}
         {% if router.identity %}<span class="badge badge-info">🆔 {{ router.identity }}</span>{% endif %}
       </p>
       <p class="muted small" style="margin-top: 6px;">
@@ -18,7 +22,7 @@
     </div>
     <div class="action-group">
       <a href="/routers/{{ router.id }}" class="btn-secondary">← Kembali</a>
-      <a href="/backups/download?ip={{ ip }}&filename={{ filename }}" class="btn-primary">⬇️ Download</a>
+      <a href="/routers/{{ router.id }}/backups/download?filename={{ filename }}" class="btn-primary">⬇️ Download</a>
       <button type="button" class="btn-secondary" onclick="copyToClipboard()">📋 Copy</button>
     </div>
   </div>

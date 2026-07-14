@@ -8,7 +8,9 @@
     <div>
       <h1>📁 Backup Files</h1>
       <p class="muted">
-        {% if selected_ip %}
+        {% if selected_router_id %}
+          Filter: <code>{{ routers|selectattr('id', 'equalto', selected_router_id)|map(attribute='name')|first }}</code> · <a href="/backups">Lihat semua</a>
+        {% elif selected_ip and session_user and session_user.role == 'admin' %}
           Filter: <code>{{ selected_ip }}</code> · <a href="/backups">Lihat semua</a>
         {% else %}
           Semua file backup di semua router
@@ -16,11 +18,11 @@
       </p>
     </div>
     <form method="get" action="/backups" class="filter-form">
-      <select name="ip" onchange="this.form.submit()">
+      <select name="router_id" onchange="this.form.submit()">
         <option value="">— Semua router —</option>
         {% for r in routers %}
-        <option value="{{ r.ip }}" {% if selected_ip == r.ip %}selected{% endif %}>
-          {{ r.name }} — {{ r.ip }}
+        <option value="{{ r.id }}" {% if selected_router_id == r.id %}selected{% endif %}>
+          {{ r.name }}{% if session_user and session_user.role == 'admin' %} — {{ r.ip }}{% endif %}
         </option>
         {% endfor %}
       </select>
@@ -42,16 +44,29 @@
         {% for f in files %}
         <tr>
           <td>
-            {% if f.name %}<strong>{{ f.name }}</strong>{% endif %}
-            <div class="router-meta"><code class="ip-code">{{ f.ip }}</code> <span class="muted">· {{ f.dir_name }}</span></div>
+            {% if f.display_name %}<strong>{{ f.display_name }}</strong>{% endif %}
+            <div class="router-meta">
+              {% if session_user and session_user.role == 'admin' %}
+              <code class="ip-code">{{ f.ip }}</code>
+              <span class="muted">· {{ f.dir_name }}</span>
+              {% else %}
+              <span class="secret-hidden">🔒 IP disembunyikan</span>
+              {% if f.display_location %}<span class="muted">· {{ f.display_location }}</span>{% endif %}
+              {% endif %}
+            </div>
           </td>
           <td><code>{{ f.filename }}</code></td>
           <td><span class="badge badge-{{ f.type }}">{{ f.type }}</span></td>
           <td>{{ (f.size / 1024)|round(1) }} KB</td>
           <td>{{ f.mtime[:19].replace('T', ' ') }}</td>
           <td class="action-cell">
+            {% if f.router_id %}
+            <a href="/routers/{{ f.router_id }}/backups/view?filename={{ f.filename }}" class="btn-sm" title="Lihat di browser">👁</a>
+            <a href="/routers/{{ f.router_id }}/backups/download?filename={{ f.filename }}" class="btn-sm" title="Download">⬇️</a>
+            {% else %}
             <a href="/backups/view?ip={{ f.ip }}&filename={{ f.filename }}" class="btn-sm" title="Lihat di browser">👁</a>
             <a href="/backups/download?ip={{ f.ip }}&filename={{ f.filename }}" class="btn-sm" title="Download">⬇️</a>
+            {% endif %}
             {% if session_user and session_user.role == 'admin' %}
             <button type="button" class="btn-sm btn-danger-sm" title="Hapus file backup ini"
               onclick="showConfirmModal(

@@ -1,8 +1,8 @@
 # MikroTik Backup Panel
 
-> Auto-backup router MikroTik ke VPS, lihat & compare config di browser.
+> Auto-backup router dan switch MikroTik ke VPS, lihat config, download, dan compare perubahan langsung dari browser.
 
-Auto-backup harian (08:00 + 18:00 WIB), lihat diff perubahan config, multi-user.
+Auto-backup harian (08:00 + 18:00 WIB), dashboard router/switch, role admin/viewer, pencarian device, dan retention backup bertingkat.
 
 ---
 
@@ -34,52 +34,51 @@ curl -fsSL https://raw.githubusercontent.com/ashadebi/mt-backup/main/scripts/ins
 | Fitur | Penjelasan |
 |---|---|
 | Auto-backup | Cron jalan 2× sehari (08:00 + 18:00 WIB) |
-| Auto-detect | Nama, model, lokasi, device type auto-detect pas tambah router |
+| Router + switch inventory | Router dan switch tampil di dashboard dengan filter `Semua`, `Router`, dan `Switch` |
+| Search device | Cari device berdasarkan nama, lokasi, identity, type, atau status backup |
+| Auto-detect | Nama, model, lokasi, identity, dan device type auto-detect saat tambah device |
+| Auto known_hosts | Host key SSH device baru dipelajari otomatis setelah koneksi sukses |
+| Smart location | Lokasi diambil dari SNMP/identity jika tersedia, fallback dari nama host yang dirapikan |
 | In-browser viewer | Lihat isi `.rsc` tanpa download |
 | Diff config | Bandingkan 2 backup, lihat baris yg berubah |
 | Multi-user | Admin (full) + viewer (lihat/download/diff saja) |
+| Viewer privacy | Role viewer tidak melihat `IP:Port`, user SSH, folder backup, atau URL backup berbasis IP |
+| Backup retention | Saat backup `weekly` sukses, backup `daily` lama device itu dihapus; saat `monthly` sukses, backup `weekly` lama dihapus |
+| System resources | Dashboard menampilkan CPU, memory, disk, dan total backup dengan icon + progress bar |
+| WIB timezone | Runtime app, log, dan jadwal backup memakai `Asia/Jakarta` |
 | Docker | Deploy sekali jalan, gampang update |
 
 ---
 
 ## 📸 Tampilan
 
-### Login
-![Login](docs/01-login.png)
+Screenshot contoh di bawah memakai data samaran. IP, username SSH, folder backup, dan nama internal sensitif tidak ditampilkan.
 
-### Dashboard
-![Dashboard](docs/02-dashboard.png)
-
-### Router Detail
-![Router Detail](docs/03-router-detail.png)
-
-### Backup Viewer (in-browser, syntax highlight)
-![View Backup](docs/04-view-backup.png)
-
-### Diff (perubahan antar 2 backup)
-![Diff](docs/05-diff.png)
-
-### Tambah Router (form simple, IP aja, sisanya auto)
-![Router New](docs/06-router-new.png)
-
-### User Management
-![Users](docs/07-users.png)
-
-### Delete Confirmation Modal
-![Delete Modal](docs/08-delete-modal.png)
+### Dashboard Terbaru
+![Dashboard terbaru disamarkan](docs/02-dashboard-current-sanitized.svg)
 
 ---
 
 ## 🛠️ Cara Pakai Setelah Install
 
 1. **Login** di URL yg ditampilkan
-2. **Tambah router** pertama: klik `Routers → ➕ Tambah Router`
+2. **Tambah router/switch** pertama: klik `Routers → ➕ Tambah Router`
 3. Isi **IP MikroTik + SSH credentials** → klik Tambah
-4. Panel akan **auto-detect** nama, model, lokasi via SSH
+4. Panel akan **auto-detect** nama, model, lokasi, identity, dan type via SSH/SNMP/identity
 5. Klik `🔌 Test Connection` lalu `▶ Backup Now` untuk backup pertama
 6. Buka router detail → klik `👁` untuk lihat isi `.rsc` di browser
 7. Klik `🔄 vs prev` untuk diff dengan backup sebelumnya
-8. (Optional) Tambah user lain di menu `Users` (admin only)
+8. Pakai pencarian atau tab `Router`/`Switch` untuk fokus ke device tertentu
+9. (Optional) Tambah user lain di menu `Users` (admin only)
+
+### Role user
+
+| Role | Akses |
+|---|---|
+| Admin | Tambah/edit/hapus device, test koneksi, backup manual, hapus file backup, kelola user |
+| Viewer | Lihat dashboard, cari/filter device, lihat/download backup, dan diff config |
+
+Viewer sengaja tidak melihat data sensitif seperti `IP:Port`, user SSH, folder backup, dan link backup berbasis IP.
 
 ---
 
@@ -145,6 +144,8 @@ sudo cat /opt/mt-backup/data/.env
 |---|---|
 | Lupa password admin | `curl ... install.sh --reset-admin` |
 | `permission denied` SSH ke MikroTik | Pastikan user MikroTik punya permission `/export` |
+| `Authentication failed` saat test device | Username/password SSH device berbeda; edit device dari dashboard admin |
+| Device baru gagal karena known_hosts | Jalankan test/backup ulang; host key dipelajari otomatis saat koneksi sukses |
 | Panel gak start | `docker logs mt-backup` — cek error di paling akhir |
 | Port 8000 sudah dipakai | Ganti `ports: "8080:8000"` di `docker-compose.simple.yml`, lalu `docker compose up -d` |
 | HTTPS gak jadi (LE gagal) | DNS A record belum pointing? cek `dig +short backup.example.com` |
@@ -259,7 +260,10 @@ Lihat `requirements.txt` lengkap.
 | POST | `/routers/{id}/backup` | admin | Trigger manual backup |
 | POST | `/routers/{id}/test` | admin | Test SSH connection |
 | GET | `/routers/{id}/diff?a=X&b=Y` | session | Lihat diff |
+| GET | `/routers/{id}/backups/view?filename=Y` | session | Lihat isi `.rsc` tanpa membuka IP di URL |
+| GET | `/routers/{id}/backups/download?filename=Y` | session | Download `.rsc` tanpa membuka IP di URL |
 | GET | `/backups` | session | List semua backup semua router |
+| GET | `/backups?router_id=X` | session | Filter backup per device tanpa memakai IP |
 | GET | `/backups/view?ip=X&filename=Y` | session | Lihat isi `.rsc` |
 | GET | `/backups/download?ip=X&filename=Y` | session | Download `.rsc` |
 | POST | `/backups/delete?ip=X&filename=Y` | admin | Hapus 1 file |

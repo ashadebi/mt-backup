@@ -5,17 +5,17 @@ Same logic as api/backup/run but as a CLI tool. No auth needed (cron has filesys
 """
 import os
 import sys
-from datetime import datetime
 from pathlib import Path
 
 # Make /app importable when running inside container
 sys.path.insert(0, "/app")
 
 from app import database, ssh_backup  # noqa: E402
+from app.time_utils import local_now  # noqa: E402
 
 
 def main():
-    started = datetime.now()
+    started = local_now()
     print(f"[{started.isoformat()}] mt-backup cron started")
 
     # 1. Cleanup old backups first
@@ -44,14 +44,16 @@ def main():
         if result.get("identity"):
             database.set_router_identity(r["id"], result["identity"])
         if result["success"]:
+            promoted_deleted = ssh_backup.cleanup_promoted_backups(dict(r), result["filename"])
             id_str = f" identity={result['identity']}" if result.get("identity") else ""
-            print(f"OK ({result['filename']}, {result['size']} bytes){id_str}")
+            cleanup_str = f", promoted_cleanup={promoted_deleted}" if promoted_deleted else ""
+            print(f"OK ({result['filename']}, {result['size']} bytes{cleanup_str}){id_str}")
             success += 1
         else:
             print(f"FAILED — {result.get('error', '')[:200]}")
             failed += 1
 
-    print(f"[{datetime.now().isoformat()}] done: {success} success, {failed} failed")
+    print(f"[{local_now().isoformat()}] done: {success} success, {failed} failed")
     return 0 if failed == 0 else 1
 
 

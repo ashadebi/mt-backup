@@ -10,8 +10,27 @@ from pathlib import Path
 from cryptography.fernet import Fernet
 import paramiko
 
+from .time_utils import local_fromtimestamp, local_now
+
 BACKUP_DIR = Path(os.environ.get("MT_BACKUP_DIR", "/app/backups"))
 KNOWN_HOSTS = Path(os.environ.get("MT_DATA_DIR", "/app/data")) / "ssh_known_hosts"
+
+
+def _ssh_client() -> paramiko.SSHClient:
+    client = paramiko.SSHClient()
+    KNOWN_HOSTS.parent.mkdir(parents=True, exist_ok=True)
+    if KNOWN_HOSTS.exists():
+        client.load_host_keys(str(KNOWN_HOSTS))
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    return client
+
+
+def _save_known_hosts(client: paramiko.SSHClient):
+    try:
+        KNOWN_HOSTS.parent.mkdir(parents=True, exist_ok=True)
+        client.save_host_keys(str(KNOWN_HOSTS))
+    except Exception:
+        pass
 
 
 def _fernet() -> Fernet:
@@ -81,16 +100,14 @@ def filename_for(now: datetime, router_name: str = "") -> str:
 
 def test_connection(ip: str, port: int, username: str, password: str, timeout: int = 10) -> dict:
     """SSH connectivity test. Returns success, version, identity, output."""
-    client = paramiko.SSHClient()
-    if KNOWN_HOSTS.exists():
-        client.load_host_keys(str(KNOWN_HOSTS))
-    client.set_missing_host_key_policy(paramiko.RejectPolicy())
+    client = _ssh_client()
     try:
         client.connect(
             ip, port=port, username=username, password=password,
             timeout=timeout, look_for_keys=False, allow_agent=False,
             banner_timeout=timeout, auth_timeout=timeout,
         )
+        _save_known_hosts(client)
         # /system resource print → version
         stdin, stdout, stderr = client.exec_command("/system resource print", timeout=timeout)
         out_res = stdout.read().decode("utf-8", errors="replace")
@@ -167,16 +184,14 @@ def detect_device_info(ip: str, port: int, username: str, password: str, timeout
         "success": False, "error": "", "identity": "", "location": "",
         "contact": "", "model": "", "version": "", "device_type": "router",
     }
-    client = paramiko.SSHClient()
-    if KNOWN_HOSTS.exists():
-        client.load_host_keys(str(KNOWN_HOSTS))
-    client.set_missing_host_key_policy(paramiko.RejectPolicy())
+    client = _ssh_client()
     try:
         client.connect(
             ip, port=port, username=username, password=password,
             timeout=timeout, look_for_keys=False, allow_agent=False,
             banner_timeout=timeout, auth_timeout=timeout,
         )
+        _save_known_hosts(client)
     except Exception as e:
         result["error"] = f"SSH connect failed: {e}"
         return result
@@ -219,7 +234,7 @@ def run_backup(router: dict, now: datetime | None = None) -> dict:
 
     Returns: success, filename, size, error, identity (auto-detected from /system identity print)
     """
-    now = now or datetime.now()
+    now = now or local_now()
     host = router["ip"]
     port = int(router["port"])
     username = router["username"]
@@ -233,16 +248,14 @@ def run_backup(router: dict, now: datetime | None = None) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / filename
 
-    client = paramiko.SSHClient()
-    if KNOWN_HOSTS.exists():
-        client.load_host_keys(str(KNOWN_HOSTS))
-    client.set_missing_host_key_policy(paramiko.RejectPolicy())
+    client = _ssh_client()
     try:
         client.connect(
             host, port=port, username=username, password=password,
             timeout=15, look_for_keys=False, allow_agent=False,
             banner_timeout=15, auth_timeout=15,
         )
+        _save_known_hosts(client)
         # /system identity print — get identity (best-effort, may fail on some setups)
         identity = ""
         try:
@@ -301,6 +314,30 @@ def cleanup_old_backups(retention: dict | None = None) -> int:
     return deleted
 
 
+def cleanup_promoted_backups(router: dict, promoted_filename: str) -> int:
+    """Delete lower-tier backups after a successful weekly/monthly snapshot."""
+    if ".weekly." in promoted_filename:
+        obsolete_marker = ".daily."
+    elif ".monthly." in promoted_filename:
+        obsolete_marker = ".weekly."
+    else:
+        return 0
+
+    deleted = 0
+    d = router_dir(router)
+    if not d.exists():
+        return 0
+    for f in d.glob("*.rsc"):
+        if f.name == promoted_filename or obsolete_marker not in f.name:
+            continue
+        try:
+            f.unlink()
+            deleted += 1
+        except Exception:
+            pass
+    return deleted
+
+
 def _file_info(d: Path, f: Path, ip: str, name: str) -> dict:
     stat = f.stat()
     return {
@@ -309,7 +346,7 @@ def _file_info(d: Path, f: Path, ip: str, name: str) -> dict:
         "dir_name": d.name,
         "filename": f.name,
         "size": stat.st_size,
-        "mtime": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+        "mtime": local_fromtimestamp(stat.st_mtime).isoformat(),
         "type": "monthly" if ".monthly." in f.name else (
             "weekly" if ".weekly." in f.name else "daily"
         ),

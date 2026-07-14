@@ -2,6 +2,7 @@
 import sqlite3
 from pathlib import Path
 from datetime import datetime
+from app.time_utils import local_iso
 
 DATA_DIR = Path(__import__("os").environ.get("MT_DATA_DIR", "/app/data"))
 DB_PATH = DATA_DIR / "panel.sqlite"
@@ -53,7 +54,7 @@ def get_user_by_username(username: str):
 
 def create_user(username: str, password_hash: str, role: str = "viewer", enabled: int = 1) -> int:
     c = _conn()
-    now = datetime.utcnow().isoformat()
+    now = local_iso()
     cur = c.execute(
         "INSERT INTO users (username, password_hash, role, enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
         (username, password_hash, role, enabled, now, now),
@@ -66,7 +67,7 @@ def create_user(username: str, password_hash: str, role: str = "viewer", enabled
 
 def update_user(user_id: int, role: str = None, enabled: int = None) -> bool:
     c = _conn()
-    now = datetime.utcnow().isoformat()
+    now = local_iso()
     fields = []
     values = []
     if role is not None:
@@ -87,7 +88,7 @@ def update_user(user_id: int, role: str = None, enabled: int = None) -> bool:
 
 def update_user_password(user_id: int, password_hash: str) -> bool:
     c = _conn()
-    now = datetime.utcnow().isoformat()
+    now = local_iso()
     cur = c.execute(
         "UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?",
         (password_hash, now, user_id),
@@ -190,9 +191,16 @@ def get_router(router_id: int) -> dict | None:
     return dict(row) if row else None
 
 
+def get_router_by_ip(ip: str) -> dict | None:
+    c = _conn()
+    row = c.execute("SELECT * FROM routers WHERE ip = ? ORDER BY id LIMIT 1", (ip,)).fetchone()
+    c.close()
+    return dict(row) if row else None
+
+
 def create_router(name, ip, port, username, password_encrypted, device_type, location, enabled) -> int:
     c = _conn()
-    now = datetime.utcnow().isoformat()
+    now = local_iso()
     cur = c.execute(
         """INSERT INTO routers
            (name, ip, port, username, password_encrypted, device_type, location, enabled, created_at, updated_at)
@@ -205,9 +213,43 @@ def create_router(name, ip, port, username, password_encrypted, device_type, loc
     return new_id
 
 
+def upsert_router_by_ip(name, ip, port, username, password_encrypted, device_type, location, enabled, identity="") -> int:
+    """Create or update a router/switch inventory row matched by IP."""
+    existing = get_router_by_ip(ip)
+    if existing:
+        update_router(
+            existing["id"],
+            name=name,
+            ip=ip,
+            port=port,
+            username=username,
+            password_encrypted=password_encrypted,
+            device_type=device_type,
+            location=location,
+            enabled=enabled,
+        )
+        if identity:
+            set_router_identity(existing["id"], identity)
+        return existing["id"]
+
+    new_id = create_router(
+        name=name,
+        ip=ip,
+        port=port,
+        username=username,
+        password_encrypted=password_encrypted,
+        device_type=device_type,
+        location=location,
+        enabled=enabled,
+    )
+    if identity:
+        set_router_identity(new_id, identity)
+    return new_id
+
+
 def update_router(router_id, name, ip, port, username, password_encrypted, device_type, location, enabled) -> bool:
     c = _conn()
-    now = datetime.utcnow().isoformat()
+    now = local_iso()
     cur = c.execute(
         """UPDATE routers SET
            name=?, ip=?, port=?, username=?, password_encrypted=?,
@@ -234,7 +276,7 @@ def set_last_backup(router_id: int, status: str):
     c = _conn()
     c.execute(
         "UPDATE routers SET last_backup_at = ?, last_backup_status = ? WHERE id = ?",
-        (datetime.utcnow().isoformat(), status, router_id),
+        (local_iso(), status, router_id),
     )
     c.commit()
     c.close()
@@ -262,7 +304,7 @@ def log_backup(router_id: int, filename: str, status: str, size: int, error: str
     cur = c.execute(
         """INSERT INTO backup_logs (router_id, filename, status, size, error, created_at)
            VALUES (?, ?, ?, ?, ?, ?)""",
-        (router_id, filename, status, size, error, datetime.utcnow().isoformat()),
+        (router_id, filename, status, size, error, local_iso()),
     )
     c.commit()
     new_id = cur.lastrowid

@@ -14,12 +14,22 @@
     <div>
       <h1>🌐 {{ router.name }} <span class="badge badge-{{ router.device_type }}">{{ router.device_type }}</span></h1>
       <div class="router-meta">
+        {% if session_user and session_user.role == 'admin' %}
         <code class="ip-code">📡 {{ router.ip }}:{{ router.port }}</code>
+        {% else %}
+        <span class="secret-hidden">🔒 IP disembunyikan</span>
+        {% endif %}
         {% if router.identity %}<span class="badge badge-info" title="RouterOS identity (auto-detected)">🆔 {{ router.identity }}</span>{% endif %}
         {% if router.location %}<span class="muted">📍 {{ router.location }}</span>{% endif %}
+        {% if session_user and session_user.role == 'admin' %}
         <span class="muted">👤 {{ router.username }}</span>
+        {% else %}
+        <span class="secret-hidden">🔒 User disembunyikan</span>
+        {% endif %}
       </div>
+      {% if session_user and session_user.role == 'admin' %}
       <p class="muted small" style="margin-top: 6px;">📁 Folder backup: <code>{{ backup_dir }}</code></p>
+      {% endif %}
     </div>
     <div class="action-group">
       {% if session_user and session_user.role == 'admin' %}
@@ -77,8 +87,8 @@
           <td>{{ (f.size / 1024)|round(1) }} KB</td>
           <td>{{ f.mtime[:19].replace('T', ' ') }}</td>
           <td class="action-cell">
-            <a href="/backups/view?ip={{ router.ip }}&filename={{ f.filename }}" class="btn-sm" title="Lihat isi backup di browser">👁</a>
-            <a href="/backups/download?ip={{ router.ip }}&filename={{ f.filename }}" class="btn-sm" title="Download file">⬇️</a>
+            <a href="/routers/{{ router.id }}/backups/view?filename={{ f.filename }}" class="btn-sm" title="Lihat isi backup di browser">👁</a>
+            <a href="/routers/{{ router.id }}/backups/download?filename={{ f.filename }}" class="btn-sm" title="Download file">⬇️</a>
             {% if not loop.first %}
               {% set prev = files[loop.index0 - 1] %}
               <a href="/routers/{{ router.id }}/diff?a={{ prev.filename }}&b={{ f.filename }}" class="btn-sm" title="Bandingkan dengan backup sebelumnya">🔄</a>
